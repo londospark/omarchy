@@ -8,9 +8,12 @@
 # `omarchy display text-size` the logo wraps mid-glyph into an unreadable mess.
 # The size that hugs the logo depends on the terminal font, so it can only be
 # measured from inside the terminal, which is what the live nudge below does
-# on every launch. A window-rule cache mirroring omarchy-launch-about's own was
-# tried first, but a rule set that way turned out not to affect the size a
-# window opens at, so there is nothing here worth caching.
+# on every launch. It only ever grows the window: a terminal already wide
+# enough for the logo is left exactly at the size the float rule gave it, so
+# this costs nothing at the default text size. A window-rule cache mirroring
+# omarchy-launch-about's own was tried first, but a rule set that way turned
+# out not to affect the size a window opens at, so there is nothing here
+# worth caching.
 
 LOGO_FILE="$OMARCHY_PATH/logo.txt"
 APP_ID="org.omarchy.terminal"
@@ -21,6 +24,8 @@ source omarchy-hyprland-window-resize-helpers
 # flat number either: the old float rule was a fixed 875x600px box, and that
 # box's aspect ratio is worth keeping even though its width no longer is, so
 # the row target is derived below to match it at whatever width the logo needs.
+# Both targets are only pursued once the fit has established that the logo
+# does not already fit -- see the check at the top of fit_window.
 LOGO_PAD=2
 OLD_WIDTH_PX=875
 OLD_HEIGHT_PX=600
@@ -98,17 +103,26 @@ fit_window() {
 
   local target_c=$(( logo_w + LOGO_PAD * 2 ))
 
+  # The terminal's own grid answers the only question this fit exists to ask --
+  # is the logo wide enough to draw whole? -- and it answers it before any
+  # window needs finding, so a terminal that already fits is left exactly where
+  # it is. Shrinking a window that fits to hug the logo would take rows away
+  # from install and update output for nothing, and this check is also the one
+  # that keeps the fix free at the default text size: only a logo that would
+  # wrap costs a resize, and that resize can only grow the window.
+  local rows cols
+  read -r rows cols <<<"$(stty size)"
+  (( cols > 0 && rows > 0 )) || return 1
+  (( cols >= target_c )) && return 0
+
   local address width height
   read -r address width height <<<"$(own_client)"
-  [[ -n ${address:-} ]] || return 1
+  [[ -n ${address:-} && -n ${width:-} ]] || return 1
 
   local max_w max_h
   read -r max_w max_h <<<"$(monitor_bounds "$address")"
   (( max_w > 0 && max_h > 0 )) || return 1
 
-  local rows cols
-  read -r rows cols <<<"$(stty size)"
-  [[ -n ${cols:-} && -n ${width:-} ]] || return 1
   (( height > 0 )) || return 1
 
   # Row target: scale the pixel width the column target needs at this

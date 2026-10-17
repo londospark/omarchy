@@ -106,16 +106,29 @@ else
   pass "own_client refuses to guess between two unmatched clients of its class"
 fi
 
+# These cases all need a grid narrower than the logo: the fit reads the
+# terminal's own grid first and returns without ever looking at a window when
+# the logo already draws whole, so a grid that fits is a fit that never runs.
+stty() { printf '%s\n' "50 12"; }
+
 # A window whose reported height is momentarily 0 -- read before the compositor
 # has finished populating a just-mapped client's geometry -- must not be divided
-# into, which is what silently drove a bad resize before this guard existed.
+# into, which is what silently drove a bad resize before this guard existed. The
+# client carries its monitor so the fit gets as far as that guard rather than
+# stopping at the monitor lookup first, and the dispatch log and stderr are the
+# proof it stopped there: a return code alone would also read as a refusal from
+# a fit that ran out of nudges instead, or one that divided by the zero anyway
+# and only failed afterwards.
+: >"$dispatch_log"
+fit_height_err="$tmp_dir/fit-height-err"
 clients_json=$(jq -n --arg pid "$$" \
-  '[{class:"org.omarchy.terminal", pid: ($pid | tonumber), address:"0xzero", size:[500,0]}]')
-if fit_window; then
+  '[{class:"org.omarchy.terminal", pid: ($pid | tonumber), address:"0xzero", size:[500,0], monitor:0}]')
+if fit_window 2>"$fit_height_err"; then
   fail "fit_window refuses a client whose height reads as 0"
-else
-  pass "fit_window refuses a client whose height reads as 0"
 fi
+[[ ! -s $fit_height_err ]] || fail "fit_window does not divide by a height that reads as 0" "$(cat "$fit_height_err")"
+[[ ! -s $dispatch_log ]] || fail "fit_window drives no resize off a height it cannot divide by" "$(cat "$dispatch_log")"
+pass "fit_window refuses a client whose height reads as 0"
 
 # own_client walks this script's own process ancestry, which costs a real
 # ps/hyprctl round trip per ancestor -- worth paying once per fit, not once per
@@ -152,3 +165,17 @@ fit_window || true
 resize=$(grep -m1 'resize' "$dispatch_log")
 [[ $resize == *"x = 640, y = 374"* ]] || fail "fit_window keeps the window within its monitor" "$resize"
 pass "fit_window keeps the window within its monitor"
+
+# A terminal the logo already fits is left exactly as it is. The fit exists to
+# stop the logo wrapping, not to hug it, and at the default text size this is
+# the whole of its behaviour: the window keeps the float rule's 875x600 and the
+# rows of install and update output a shrink would have cost. The window above
+# still answers through the stub from the case before it, so a fit that did run
+# would have a window to resize and would leave the resize in the log.
+stty() { printf '%s\n' "30 100"; }
+: >"$dispatch_log"
+: >"$own_client_call_log"
+fit_window || fail "fit_window accepts a terminal that already fits the logo"
+[[ ! -s $dispatch_log ]] || fail "fit_window leaves a terminal that already fits the logo alone" "$(cat "$dispatch_log")"
+[[ ! -s $own_client_call_log ]] || fail "fit_window settles the fitting case without hunting for a window" "own_client called $(wc -c <"$own_client_call_log") times"
+pass "fit_window leaves a terminal that already fits the logo alone"

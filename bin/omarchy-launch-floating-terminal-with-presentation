@@ -134,6 +134,8 @@ fit_window() {
   target_w_px=$(awk -v c="$target_c" -v cols="$cols" -v w="$width" 'BEGIN { printf "%d", c * w / cols + 0.5 }')
   target_h_px=$(awk -v w="$target_w_px" -v ow="$OLD_WIDTH_PX" -v oh="$OLD_HEIGHT_PX" 'BEGIN { printf "%d", w * oh / ow + 0.5 }')
   target_r=$(awk -v h="$target_h_px" -v rows="$rows" -v ht="$height" 'BEGIN { printf "%d", h * rows / ht + 0.5 }')
+  # A window opened taller than that shape keeps its rows: the fit only grows.
+  (( target_r < rows )) && target_r=$rows
 
   local nudges=0 shift_w shift_h target_w target_h
   while :; do

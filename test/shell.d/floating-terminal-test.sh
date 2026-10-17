@@ -179,3 +179,15 @@ fit_window || fail "fit_window accepts a terminal that already fits the logo"
 [[ ! -s $dispatch_log ]] || fail "fit_window leaves a terminal that already fits the logo alone" "$(cat "$dispatch_log")"
 [[ ! -s $own_client_call_log ]] || fail "fit_window settles the fitting case without hunting for a window" "own_client called $(wc -c <"$own_client_call_log") times"
 pass "fit_window leaves a terminal that already fits the logo alone"
+
+# The row target keeps the old float's shape, but a window opened taller than
+# that shape (a user's own float rule) must not lose rows to a fit that widens it.
+_real_own_client() { printf '%s\n' "0xtall 875 800"; }
+stty() { printf '%s\n' "30 12"; }
+monitors_json='[{"id":0,"width":2560,"height":1440,"scale":1,"transform":0,"reserved":[0,26,0,0]}]'
+clients_json='[{"class":"org.omarchy.terminal","address":"0xtall","size":[875,800],"monitor":0}]'
+: >"$dispatch_log"
+fit_window || true
+resize=$(grep -m1 'resize' "$dispatch_log")
+[[ $resize == *"x = 1021, y = 800"* ]] || fail "fit_window widens a tall window without taking its rows" "$resize"
+pass "fit_window widens a tall window without taking its rows"
